@@ -14,6 +14,10 @@ services:
       MODEL: ${MODEL:-llama3.2:3b}
       ACCESS_CODE: ${ACCESS_CODE:-}
       SYSTEM_PROMPT: ${SYSTEM_PROMPT:-Tu es un assistant utile. Réponds en français, de façon concise.}
+      RAG: ${RAG:-0}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      RAG_K: ${RAG_K:-3}
+      RAG_SEUIL: ${RAG_SEUIL:-0.45}
     ports:
       - "80:8000"
     depends_on:
