@@ -17,6 +17,8 @@ sur Polytechnique Sousse.
 
 La formation existe aussi [en un seul fichier](docs/formation-aws-pas-a-pas.md), pour l'imprimer.
 
+Entraîner votre propre assistant sur vos données, dans Google Colab : [![Ouvrir dans Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb)
+
 ## Contenu du dépôt
 
 | Chemin | Rôle | Lab |

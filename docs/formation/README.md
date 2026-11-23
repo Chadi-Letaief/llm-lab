@@ -17,6 +17,8 @@
 
 La formation existe aussi [en un seul fichier](../formation-aws-pas-a-pas.md), pour l'imprimer ou la lire hors ligne.
 
+**Entraîner votre propre assistant** sur vos données, pour le Lab 6 : [![Ouvrir dans Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb)
+
 ## Avant de commencer
 
 

@@ -670,6 +670,8 @@ Un modèle généraliste ne connaît pas votre école : interrogé sur son adres
 
 L'entraînement demande une carte graphique, que le Learner Lab n'offre pas. Il a donc été fait en dehors d'AWS, et vous partez du résultat : un fichier `eps-assistant-q4_k_m.gguf` de 2 Go, mis à disposition par l'enseignant sur Google Drive. Pour l'entraîner vous-même sur votre poste, suivez la partie B du « Guide local » (`docs/guide-local-fine-tuning.md` dans votre dépôt).
 
+[![Ouvrir dans Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb)
+
 **Votre propre assistant, sur le sujet de votre choix** : ouvrez le notebook [Google Colab](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) (`finetune/fine_tuning_colab.ipynb`). Il entraîne le modèle sur la carte graphique gratuite de Colab, dépose le fichier GGUF dans votre Google Drive, puis affiche les commandes de ce lab adaptées à votre modèle : votre identifiant Drive à la tâche 2, votre nom de modèle à la tâche 3, votre prompt système à la tâche 4.
 
 Mesures faites pendant la préparation, sur 58 questions jamais vues à l'entraînement :
@@ -1143,6 +1145,7 @@ aws ec2 describe-instances --query "Reservations[].Instances[].State.Name"
 - [ ] Pour utiliser vous-même le lab : ouvrir la classe, puis **Student View** dans l'écran Vocareum. Ne pas cliquer **Unpublish Assignment**.
 - [ ] Créer un dépôt GitHub public avec le contenu du kit, **sans** le dossier `.github` : les étudiants créent le fichier du pipeline au Lab 5. Cocher **Settings** > **Template repository**.
 - [ ] Partager le fichier `eps-assistant-q4_k_m.gguf` sur Google Drive avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Vérifier dans CloudShell que la commande de la tâche 2 du Lab 6 télécharge bien 1,9 Go commençant par `GGUF`. Si le lien de partage change, remplacer l'identifiant `ID` dans le Lab 6.
+- [ ] Dérouler une fois le [notebook Colab](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) avec `SOURCE = "eps"`, pour connaître ses durées et ses éventuels messages avant de le proposer aux étudiants.
 - [ ] Demander aux étudiants de créer leur compte GitHub avant la première séance.
 - [ ] Prévenir les étudiants : à la connexion à AWS Academy, copier-coller le code de vérification reçu par e-mail. Plusieurs saisies fausses bloquent le compte, et le support met du temps à le débloquer.
 
