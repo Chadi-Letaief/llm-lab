@@ -1,11 +1,10 @@
 # Guide local — tester et spécialiser le modèle sur son poste
 
-Version testée le 14 novembre 2026 sur Windows 11, avec une carte NVIDIA RTX A5500 (16 Go).
-
-Ce guide se fait entièrement sur votre ordinateur, sans AWS. Il a deux parties :
+Ce guide se fait entièrement sur votre ordinateur, sans AWS. Il a trois parties :
 
 - **Partie A — Faire tourner l'application en local** (45 min, dont 20 à 30 min de téléchargements). Vous obtenez sur `http://localhost` la même page de discussion que sur AWS.
 - **Partie B — Spécialiser le modèle par fine-tuning LoRA** (1 h 30, dont 30 à 60 min de téléchargements et d'attente). Vous transformez Llama 3.2 3B en assistant de Polytechnique Sousse, vous mesurez le gain, et vous discutez avec lui dans l'interface web.
+- **Partie C — Ajouter une recherche documentaire (RAG)** (30 min). L'application fournit au modèle les documents de l'école à chaque question, et vous mettez à jour ses connaissances sans réentraîner.
 
 Toutes les commandes se tapent dans **PowerShell**, depuis le dossier du projet, sauf mention contraire. Chaque étape donne la commande, puis *le résultat attendu en italique*.
 
@@ -161,7 +160,7 @@ python -m venv .venv-tests
 .venv-tests\Scripts\python -m pytest -q
 ```
 
-*Attendu : `7 passed`, avec un avertissement sans conséquence.*
+*Attendu : `12 passed`, avec un avertissement sans conséquence.*
 
 ### A6 — Regarder ce qui tourne
 
@@ -177,7 +176,7 @@ docker compose exec ollama ollama ps
 
 - [ ] `http://localhost` répond à une question avec le code `test-123`.
 - [ ] Une requête sans code est refusée.
-- [ ] Les 7 tests passent.
+- [ ] Les 12 tests passent.
 - [ ] Vous avez noté la réponse inventée sur l'adresse de l'école.
 
 Laissez les conteneurs tourner pour la partie B. Pour tout arrêter plus tard sans rien perdre : `docker compose stop`. Pour redémarrer : la commande de l'étape A3-2.
@@ -464,6 +463,103 @@ docker compose down
 
 ---
 
+## Partie C — Ajouter une recherche documentaire (RAG)
+
+Durée : 30 min, dont 5 à 15 min de téléchargement. Pas besoin de carte graphique.
+
+### Le principe
+
+Le fine-tuning de la partie B fait **apprendre** les informations au modèle. Le **RAG** les lui **fournit** au moment de la question : l'application cherche dans le fichier `app/connaissances.md` les 3 passages les plus proches de la question, grâce à un modèle d'**embedding** (`bge-m3`), et les ajoute au prompt. Pour changer une information, il suffit alors de modifier ce fichier.
+
+Le schéma `docs/architecture.svg` montre le trajet d'une question, étape par étape.
+
+### C1 — Installer le modèle d'embedding
+
+Depuis le dossier du projet (`llm-lab`), conteneurs démarrés :
+
+```powershell
+docker compose exec ollama ollama pull bge-m3
+```
+
+*Attendu : un téléchargement d'environ 1,2 Go, puis `success`.*
+
+### C2 — Activer le RAG avec le modèle d'origine
+
+1. Ouvrez le fichier `.env` dans un éditeur (`notepad .env`). Mettez `MODEL=llama3.2:3b`, ajoutez une ligne `RAG=1`, et gardez la ligne `SYSTEM_PROMPT` de l'assistant de l'école (copiée à l'étape B9). Enregistrez. Si vous n'avez pas fait la partie B, copiez d'abord `finetune\env-eps.exemple` sur `.env`, comme à l'étape B9, puis faites ces modifications.
+2. Redémarrez l'API, attendez une minute, puis vérifiez.
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+Start-Sleep -Seconds 60
+curl.exe -s http://localhost/api/health
+```
+
+*Attendu : `"modele":"llama3.2:3b"`, `"rag":true`, `"embedding_pret":true` et `"passages":53`. Si `passages` vaut 0, l'index n'est pas encore calculé : attendez 30 secondes et relancez `curl.exe`.*
+
+### C3 — Voir ce que la recherche trouve
+
+```powershell
+curl.exe -s -G http://localhost/api/recherche --data-urlencode "q=frais du cycle ingenieur" --data-urlencode "k=3" -H "x-access-code: test-123"
+```
+
+*Attendu : trois passages, le premier étant le numéro 24, « Frais de scolarité 2026/2027 ». Tapez la question sans accents : PowerShell transmet mal les caractères accentués à `curl.exe`. Dans l'interface web, les accents ne posent aucun problème.*
+
+### C4 — Discuter avec l'assistant augmenté
+
+Rechargez `http://localhost`, saisissez le code `test-123`, et posez ces questions. *Attendu : l'en-tête affiche « RAG prêt » ; sous chaque réponse sur l'école, une ligne « Sources » liste les passages utilisés, et leur texte s'affiche au survol.*
+
+| Question | Réponse attendue |
+| --- | --- |
+| Où se trouve l'école ? | Route Ceinture Sahloul, Entrée Kalaa Sghira, 4021 Sousse |
+| Combien coûte le cycle ingénieur ? | 7 849 DT par an, avec la source [24] |
+| Explique le cloud en une phrase. | Une réponse générale, sans ligne « Sources » |
+
+Le modèle d'origine, qui inventait l'adresse à l'étape A4, la donne maintenant juste, sans aucun entraînement.
+
+### C5 — Mesurer avec et sans RAG
+
+```powershell
+cd finetune
+python evaluer.py --api http://localhost --code test-123 --n 20
+cd ..
+```
+
+*Attendu : deux lignes, « llama3.2:3b avec RAG » et « llama3.2:3b sans RAG ». Valeurs mesurées sur les 58 questions pendant la préparation : 59 % avec RAG, 19 % sans.*
+
+Remettez `MODEL=eps-assistant` dans `.env`, redémarrez, et recommencez pour obtenir les quatre combinaisons. Valeurs de la préparation avec le modèle affiné : 90 % avec RAG, 89 % sans. Le rappel compte les mots de la réponse de référence : le modèle affiné les a appris mot pour mot, alors que le modèle d'origine reformule les passages. Lisez `finetune\evaluation.json` pour juger les réponses elles-mêmes.
+
+### C6 — Mettre à jour les connaissances sans réentraîner
+
+1. Demandez dans l'interface : « Quand a lieu la session TEF Canada organisée à l'école ? » *Attendu : l'assistant ne sait pas, ou invente.*
+2. Ouvrez `app\connaissances.md` et ajoutez à la fin, avec une ligne vide avant chaque bloc :
+
+```markdown
+## Événements
+
+L'école organise une session d'examens TEF, TEF Canada, TEFAQ et DFP le 14 novembre 2026, de 8 h à 16 h.
+```
+
+3. Reconstruisez l'image, qui contient le fichier, puis redémarrez.
+
+```powershell
+docker build -t llm-app:local app
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+Start-Sleep -Seconds 60
+curl.exe -s http://localhost/api/health
+```
+
+*Attendu : `"passages":54`.*
+
+4. Reposez la question. *Attendu : le 14 novembre 2026, de 8 h à 16 h, avec la source [54] « Événements ».*
+
+### Point de contrôle de la partie C
+
+- [ ] L'en-tête affiche « RAG prêt » et une réponse sur les frais affiche ses sources.
+- [ ] Vous donnez les rappels avec et sans RAG.
+- [ ] L'assistant connaît la session TEF après votre modification.
+
+---
+
 ## Si ça bloque
 
 | Symptôme | Remède |
@@ -478,24 +574,15 @@ docker compose down
 | `convertir.sh` : « Dossier fusionne/ introuvable » | Vous n'êtes pas dans `finetune`, ou l'étape B5 n'a pas été faite |
 | Accents illisibles dans PowerShell | Tapez `$env:PYTHONUTF8 = "1"` avant les commandes Python |
 | `creer_modele.sh` : « Fichier introuvable dans le conteneur » | Refaites la copie de l'étape B7-1 |
+| En-tête : « RAG sans embedding » | `bge-m3` n'est pas installé : refaites l'étape C1 |
+| `/api/health` ne contient pas `"rag"` | Votre image date d'avant le RAG : `docker build -t llm-app:local app`, puis redémarrez |
+| C6 : `passages` vaut toujours 53 | L'image n'a pas été reconstruite, ou il manque la ligne vide avant `## Événements` |
 | B6 bis : le fichier téléchargé fait quelques Ko | Ce n'est pas le modèle mais une page web de Google : partage du fichier non public, ou trop de téléchargements récents. Prévenez l'enseignant, ou réessayez plus tard |
 
 ---
 
-## Pour l'enseignant : ce qui a été vérifié
+## Pour l'enseignant
 
-| Étape | Vérification |
-| --- | --- |
-| A3 à A6 | Exécutées sur le poste de test, avec un nom de projet Docker différent de celui du guide |
-| A1 | Non rejouée telle quelle : le test est parti du dossier local, pas d'un `git clone` |
-| B1 | Rejouée dans un environnement Python neuf : installation, détection de la carte, puis une époque d'entraînement |
-| B2 à B5 | Exécutées ; les sorties citées sont celles du test |
-| B4 avec téléchargement automatique du modèle de base | Non rejouée telle quelle : le test a utilisé une copie locale du même modèle (`unsloth/Llama-3.2-3B-Instruct`) |
-| B6 | La conversion a réussi une fois, lancée par l'enseignant. Le script a été retouché ensuite (installation de `git`, version figée de llama.cpp) : **à relancer une fois avant le cours** |
-| B7 à B9 | Exécutées avec les commandes du guide, en PowerShell pour les copies |
-| B6 bis | Lien Drive vérifié le 23 novembre 2026 : il sert le fichier complet, identique à l'original (empreinte SHA-256 vérifiée après un téléchargement depuis une instance AWS) |
-| Linux et macOS | Non testés. Sur Mac, il n'y a pas de carte NVIDIA : partie A, puis le parcours sans carte graphique |
-
-Les fichiers ajoutés au kit sont déjà dans le dépôt modèle `nevermind78/llm-lab` : dossier `finetune` (scripts et données, sans les modèles), `docker-compose.local.yml`, `.env.exemple`, `.gitattributes`, `pytest.ini`. Le fichier `eps-assistant-q4_k_m.gguf` (2 Go), trop gros pour GitHub, est sur Google Drive, identifiant `1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh`. L'étape B6 bis et le Lab 6 de la formation AWS le téléchargent. Il doit être partagé avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Si vous le remplacez, mettez à jour l'identifiant dans les deux guides.
+Le fichier `eps-assistant-q4_k_m.gguf` (2 Go), trop gros pour GitHub, est sur Google Drive, identifiant `1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh`. L'étape B6 bis et le Lab 6 de la formation AWS le téléchargent. Il doit être partagé avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Si vous le remplacez, mettez à jour l'identifiant dans les deux guides.
 
 Les données d'entraînement décrivent l'école telle que son site public la présentait le 13 novembre 2026. Faites-les relire par l'administration avant de présenter cet assistant comme une source d'information.

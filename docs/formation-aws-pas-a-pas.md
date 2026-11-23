@@ -1,18 +1,19 @@
 # Déployer un LLM de A à Z sur AWS Academy — formation pas à pas
 
-Version testée le 13 novembre 2026 dans un AWS Academy Learner Lab réel.
+![Schéma d'ensemble : préparation, AWS, utilisation, et trajet d'une question avec le RAG](architecture.svg)
 
 ## Avant de commencer
 
 ### Ce que vous allez construire
 
-En huit labs, vous mettez en ligne un assistant de discussion sur AWS :
+En neuf labs, vous mettez en ligne un assistant de discussion sur AWS :
 
 1. un modèle de langage ouvert, Llama 3.2 3B, qui tourne sur votre propre machine virtuelle ;
 2. une API et une page web pour discuter avec lui depuis un navigateur ;
 3. une infrastructure décrite dans un fichier, que vous pouvez détruire et recréer en une commande ;
 4. un pipeline qui teste et déploie votre code à chaque `git push` ;
-5. un assistant spécialisé sur l'École Polytechnique de Sousse, obtenu par fine-tuning.
+5. un assistant spécialisé sur l'École Polytechnique de Sousse, obtenu par fine-tuning ;
+6. une recherche documentaire (RAG), qui fournit au modèle les documents de l'école à chaque question.
 
 | Lab | Titre | Durée | Vous repartez avec |
 | --- | --- | --- | --- |
@@ -23,7 +24,8 @@ En huit labs, vous mettez en ligne un assistant de discussion sur AWS :
 | 4 | Tout recréer avec CloudFormation | 60 min | Une pile qui reconstruit le service seule |
 | 5 | Pipeline CI/CD | 75 min | Un `git push` qui teste, construit et déploie |
 | 6 | Spécialiser l'assistant pour Polytechnique Sousse | 60 min | Un modèle affiné en service, et sa mesure avant/après |
-| 7 | Mesurer, superviser, nettoyer | 45 min | Trois mesures et un compte propre |
+| 7 | Ajouter une recherche documentaire (RAG) | 60 min | Un assistant qui cite ses sources, et des connaissances modifiables sans réentraînement |
+| 8 | Mesurer, superviser, nettoyer | 45 min | Trois mesures et un compte propre |
 
 Les labs se suivent dans l'ordre. Chacun se termine par un point de contrôle que l'enseignant vérifie.
 
@@ -56,7 +58,7 @@ Les tarifs sont cités de mémoire : vérifiez-les sur la page de tarification A
 | IAM verrouillé : aucun utilisateur ni rôle à créer | On utilise le rôle fourni `LabRole` et son profil `LabInstanceProfile` |
 | Identifiants temporaires, renouvelés à chaque session de 4 heures | Aucune clé AWS dans GitHub : le déploiement part d'un exécuteur installé sur l'instance |
 | Instances arrêtées en fin de session, nouvelle adresse au redémarrage | L'adresse du site change à chaque session ; les conteneurs redémarrent seuls |
-| Amazon Bedrock refusé (`AccessDenied`, vérifié pendant le test) | On déploie soi-même un modèle ouvert |
+| Amazon Bedrock refusé (`AccessDenied`) | On déploie soi-même un modèle ouvert |
 
 ### Votre budget : 50 $
 
@@ -64,7 +66,7 @@ Le parcours complet devrait consommer moins de 10 $ (estimation). Trois réflexe
 
 1. À la fin de chaque séance, cliquez **End Lab** : vos instances sont arrêtées, vos ressources conservées.
 2. Entre deux séances, seul le disque de l'instance est facturé (environ 2,40 $ par mois pour 30 Gio).
-3. À la fin du Lab 7, supprimez tout.
+3. À la fin du Lab 8, supprimez tout.
 
 Une `t3.large` laissée allumée en continu consommerait les 50 $ en 25 jours environ.
 
@@ -605,7 +607,7 @@ N'exécutez pas la commande `./run.sh` proposée par GitHub : le service la remp
 
 ```
 FAILED tests/test_api.py::test_message_trop_long - AssertionError: assert 200 == 422
-1 failed, 6 passed
+1 failed, 11 passed
 ```
 
 4. Rechargez la page web. *Attendu : la version en service n'a pas changé.*
@@ -821,9 +823,217 @@ Le pipeline ne remplace que l'image (`APP_IMAGE`) dans `.env` : le choix du mod�
 
 ---
 
-## Lab 7 — Mesurer, superviser, nettoyer
+## Lab 7 — Ajouter une recherche documentaire (RAG)
 
-**Durée** : 45 min · **Prérequis** : Lab 6 · **Objectif** : chiffrer la performance et le coût du service, vérifier qu'il survit à un redémarrage, puis tout supprimer.
+**Durée** : 60 min · **Prérequis** : Lab 6, assistant `eps-assistant` en service · **Objectif** : donner à l'assistant les documents de l'école au moment de chaque question, mesurer ce que cela change, puis mettre à jour ses connaissances sans réentraîner aucun modèle.
+
+### Le principe
+
+Au Lab 6, le modèle a **appris** les informations de l'école : pour en changer une, il faut le réentraîner. Le **RAG** (*Retrieval-Augmented Generation*, génération augmentée par la recherche) procède autrement : les informations restent dans un fichier texte, et l'application les **fournit** au modèle au moment de la question.
+
+1. Au démarrage, l'application découpe le fichier `app/connaissances.md` en passages, un par paragraphe, et calcule pour chacun un **embedding** : un vecteur de nombres qui représente son sens. C'est un second modèle, `bge-m3`, qui fait ce calcul.
+2. À chaque question, elle calcule l'embedding de la question et retient les 3 passages les plus proches, s'ils dépassent un **seuil de similarité** (0,45).
+3. Elle ajoute ces passages au prompt système, avec la consigne de répondre à partir d'eux.
+
+Le bas du schéma d'ensemble, en tête du sommaire de la formation, montre ce trajet étape par étape.
+
+Le code est déjà dans votre dépôt, désactivé par défaut. Quatre réglages du fichier `.env` le pilotent :
+
+| Réglage | Valeur par défaut | Rôle |
+| --- | --- | --- |
+| `RAG` | `0` | `1` active la recherche |
+| `EMBED_MODEL` | `bge-m3` | Modèle d'embedding, servi par Ollama |
+| `RAG_K` | `3` | Nombre de passages au plus |
+| `RAG_SEUIL` | `0.45` | Similarité minimale d'un passage ; en dessous, il est écarté |
+
+### Tâche 1 — Lire les connaissances et le code
+
+1. Sur GitHub, ouvrez `app/connaissances.md`. *Attendu : un titre `##` par thème (« Identité et contact », « Formations », « Frais de scolarité 2026/2027 »…) et un paragraphe par information, 53 en tout. Les lignes qui commencent par `>` sont des notes, ignorées par l'application.*
+2. Ouvrez `app/main.py` et repérez les fonctions `lire_passages`, `rechercher` et `consigne`. Répondez :
+   - Quelle opération mathématique mesure la proximité entre la question et un passage ?
+   - À quel endroit les passages sont-ils ajoutés aux messages envoyés au modèle ?
+   - Que se passe-t-il si aucun passage ne dépasse le seuil ?
+
+Si `app/connaissances.md` n'existe pas dans votre dépôt, voyez « Si ça bloque ».
+
+### Tâche 2 — Installer le modèle d'embedding
+
+Connectez-vous à l'instance `llm-lab` par Session Manager.
+
+```bash
+sudo -i
+cd /opt/llm
+docker compose exec ollama ollama pull bge-m3
+docker compose exec ollama ollama list
+```
+
+*Attendu : un téléchargement d'environ 1,2 Go (11 secondes pendant le test), puis `success`. La liste montre `bge-m3:latest`, `eps-assistant:latest` et `llama3.2:3b`.*
+
+### Tâche 3 — Activer le RAG avec le modèle d'origine
+
+On commence avec `llama3.2:3b`, le modèle qui inventait l'adresse de l'école au Lab 6 : le RAG suffit-il, sans fine-tuning ?
+
+1. Changez le modèle, activez la recherche, puis libérez la mémoire occupée par le modèle affiné du Lab 6.
+
+```bash
+sed -i 's|^MODEL=.*|MODEL=llama3.2:3b|' .env
+grep -q '^RAG=' .env || echo 'RAG=1' >> .env
+docker compose up -d --no-build
+docker compose exec ollama ollama stop eps-assistant
+```
+
+*Attendu : `Container llm-app-1 Started`, et aucun message d'erreur.*
+
+La dernière commande décharge `eps-assistant` de la mémoire, sans le supprimer. Sans elle, il y resterait 5 minutes, à côté de `llama3.2:3b` et de `bge-m3` : pendant le test, la mémoire utilisée est alors montée à 7,1 Go sur 7,8.
+
+2. Attendez que l'application ait calculé les embeddings des 53 passages (52 secondes pendant le test), puis vérifiez son état.
+
+```bash
+sleep 60
+docker compose logs app | grep index
+curl -s localhost/api/health; echo
+```
+
+*Attendu : une ligne `{"evenement": "index", "passages": 53, "duree_s": 52.2}` ou proche, puis :*
+
+```json
+{"ok":true,"version":"...","modele":"llama3.2:3b","modele_pret":true,"rag":true,"embedding":"bge-m3","embedding_pret":true,"passages":53}
+```
+
+Si `passages` vaut 0, l'index n'est pas encore prêt : attendez 30 secondes et relancez `curl`. L'index est recalculé à chaque redémarrage de l'application.
+
+### Tâche 4 — Voir ce que la recherche trouve
+
+La route `/api/recherche` montre les passages retenus pour une question, avec leur similarité. Remplacez `MON-CODE`.
+
+```bash
+CODE=MON-CODE
+voir() {
+  curl -s -G localhost/api/recherche --data-urlencode "q=$1" --data-urlencode "k=3" \
+    -H "x-access-code: $CODE" | python3 -m json.tool --no-ensure-ascii
+}
+voir "Combien coûte le cycle ingénieur ?"
+```
+
+*Attendu : trois passages, du plus proche au moins proche. Le premier est le numéro 24, « Frais de scolarité 2026/2027 », avec une similarité d'environ 0,72.*
+
+Essayez ensuite :
+
+```bash
+voir "Y a-t-il un club de robotique ?"
+voir "Explique le cloud en une phrase."
+```
+
+*Attendu : pour le club, le passage 43 en tête (0,634 pendant le test). Pour le cloud, aucune similarité ne dépasse 0,45 (0,339 au plus pendant le test) : l'application ne donnera aucun passage au modèle, qui répondra avec ses connaissances générales.*
+
+### Tâche 5 — Discuter avec l'assistant augmenté
+
+1. Rechargez l'interface web. *Attendu : l'en-tête affiche « llama3.2:3b · modèle prêt · RAG prêt ».*
+2. Posez ces questions. Sous chaque réponse, une ligne « Sources » liste les passages utilisés, avec leur similarité ; survolez-en un pour lire son texte. Comptez 30 à 70 secondes par réponse : le prompt s'allonge des passages, et le modèle d'origine écrit des réponses plus longues que le modèle affiné.
+
+| Question | Réponse attendue | Sources attendues |
+| --- | --- | --- |
+| Où se trouve l'école ? | Route Ceinture Sahloul, Entrée Kalaa Sghira, 4021 Sousse | [2], [8], [1] |
+| Combien coûte le cycle ingénieur pour un étudiant tunisien ? | 7 849 DT par an, en trois tranches | [24], [23], [26] |
+| Y a-t-il un club de robotique ? | Le Club Polyrobots | [43], [42] |
+| Explique le cloud en une phrase. | Une réponse générale | Aucune ligne « Sources » |
+
+3. Comparez avec le Lab 6 : le modèle d'origine, qui inventait l'adresse, la donne maintenant juste, sans aucun entraînement.
+
+### Tâche 6 — Mesurer, et comparer avec le fine-tuning
+
+Le script `evaluer.py` peut interroger l'application elle-même, une fois avec la recherche et une fois sans. Il tourne dans le conteneur de l'API, et joint l'application par son nom de service, `app`.
+
+```bash
+docker compose run --rm -v /opt/llm/finetune:/f -w /f app \
+  python evaluer.py --api http://app:8000 --code $CODE --n 5
+```
+
+*Attendu, après 5 à 6 minutes : deux lignes. La version avec RAG doit avoir un rappel nettement plus haut. Sortie obtenue pendant le test :*
+
+```
+llama3.2:3b avec RAG         rappel moyen  72.3 % · réponses à plus de 80 % : 2/5 · 40 s par réponse · 200 s
+llama3.2:3b sans RAG         rappel moyen  43.0 % · réponses à plus de 80 % : 0/5 · 26 s par réponse · 129 s
+```
+
+Recommencez avec le modèle affiné du Lab 6, pour obtenir les quatre combinaisons :
+
+```bash
+sed -i 's|^MODEL=.*|MODEL=eps-assistant|' .env
+docker compose up -d --no-build
+docker compose exec ollama ollama stop llama3.2:3b
+sleep 60
+docker compose run --rm -v /opt/llm/finetune:/f -w /f app \
+  python evaluer.py --api http://app:8000 --code $CODE --n 5
+```
+
+*Attendu, après 3 à 4 minutes : deux lignes. Pendant le test, le modèle affiné a obtenu 100 % avec et sans RAG sur ces 5 questions.*
+
+Reportez vos quatre rappels dans un tableau : modèle d'origine ou affiné, avec ou sans RAG. Pour comparaison, voici les rappels obtenus sur les 58 questions pendant la préparation :
+
+| | Sans RAG | Avec RAG |
+| --- | --- | --- |
+| `llama3.2:3b` (modèle d'origine) | 19 % | 59 % |
+| `eps-assistant` (modèle affiné) | 89 % | 90 % |
+
+Attention à la lecture de ces chiffres : le rappel compte les mots de la réponse de référence. Le modèle affiné a appris ces phrases mot pour mot, alors que le modèle d'origine reformule les passages qu'on lui donne. Ouvrez `finetune/evaluation.json` : une réponse juste mais reformulée y obtient un rappel moyen.
+
+### Tâche 7 — Mettre à jour les connaissances sans réentraîner
+
+L'école annonce sur son site une session d'examens de langue. L'assistant ne la connaît pas encore.
+
+1. Dans l'interface, demandez : « Quand a lieu la session TEF Canada organisée à l'école ? » *Attendu : l'assistant ne sait pas, ou invente une date.*
+2. Sur GitHub, ouvrez `app/connaissances.md`, cliquez le crayon **Edit**, et ajoutez à la fin du fichier, en laissant une ligne vide avant chaque bloc :
+
+```markdown
+## Événements
+
+L'école organise une session d'examens TEF, TEF Canada, TEFAQ et DFP le 14 novembre 2026, de 8 h à 16 h.
+```
+
+3. Cliquez **Commit changes**, puis suivez l'onglet **Actions** jusqu'au vert (environ une minute pendant le test).
+4. Vérifiez sur l'instance que l'application a relu le fichier. *Attendu : `"passages":54`. Si la valeur est 0, l'index est en cours de calcul : attendez une minute.*
+
+```bash
+curl -s localhost/api/health; echo
+```
+
+5. Reposez la question dans l'interface. *Attendu : une réponse comme « La session TEF Canada se tiendra le 14 novembre 2026, de 8 h à 16 h. », avec la source [54] « Événements » (similarité 0,72 pendant le test).*
+
+Aucun modèle n'a été réentraîné : il a suffi de modifier un fichier texte et de laisser le pipeline redéployer.
+
+### Point de contrôle
+
+- [ ] L'en-tête de l'interface affiche « RAG prêt ».
+- [ ] Une réponse sur les frais affiche ses sources, avec le passage [24].
+- [ ] Vous donnez les rappels avec et sans RAG.
+- [ ] L'assistant connaît la session TEF après votre modification de `connaissances.md`.
+
+### Questions de synthèse
+
+1. Comparez le fine-tuning du Lab 6 et le RAG : que faut-il refaire quand les frais changent ? Lequel des deux permet de citer ses sources ?
+2. À quoi sert le seuil de 0,45 ? Que se passerait-il avec un seuil de 0 ? Avec un seuil de 0,9 ?
+3. L'application ne cherche qu'à partir de la dernière question. Que se passe-t-il si l'on demande « Combien coûte le cycle ingénieur ? », puis « Et pour un étudiant étranger ? » ? Comment l'améliorer ?
+4. Demandez « Est-ce qu'il y a un internat à l'EPS ? ». Aucun passage n'en parle, et pourtant le modèle peut inventer. Pourquoi la consigne ne suffit-elle pas ?
+
+### Si ça bloque
+
+| Symptôme | Remède |
+| --- | --- |
+| `app/connaissances.md` n'existe pas dans votre dépôt, ou `/api/health` ne contient pas `"rag"` | Votre dépôt a été créé avant l'ajout du RAG. Dans CloudShell : `git clone https://github.com/COMPTE/llm-lab.git && cd llm-lab`, `git remote add modele https://github.com/nevermind78/llm-lab.git`, `git fetch modele`, `git checkout modele/main -- app tests finetune docker-compose.yml`, `git config user.name "PRÉNOM"`, `git config user.email "COMPTE@users.noreply.github.com"`, `git commit -m "Récupérer le RAG"`, `git push`. Au mot de passe, collez un jeton GitHub (**Settings** > **Developer settings** > **Personal access tokens**, droit `repo`) |
+| En-tête : « RAG sans embedding » | `bge-m3` n'est pas installé : refaites la tâche 2 |
+| `"passages":0` après une minute | `docker compose logs app --tail 20` : la ligne `index_reporte` indique que l'index a échoué ; posez une question pour le relancer |
+| Réponse « Échec : recherche impossible » | Ollama ne répond pas ou `bge-m3` est absent : `docker compose exec ollama ollama list` |
+| `python3: No module named json.tool` ou caractères `é` | Retirez `--no-ensure-ascii` ; les accents s'afficheront codés, sans autre conséquence |
+| `evaluer.py` : `Connection refused` | Gardez `--api http://app:8000` : dans le conteneur, l'application ne s'appelle pas `localhost` |
+| Réponses très lentes, ou « erreur du serveur de modèle » | Mémoire saturée par trois modèles chargés : `docker compose exec ollama ollama ps`, puis `docker compose exec ollama ollama stop NOM` pour le modèle inutilisé, et `free -h` |
+| Après le commit, `passages` vaut toujours 53 | Le pipeline n'a pas fini, ou a échoué : onglet **Actions**. Vérifiez aussi la ligne vide avant `## Événements` |
+
+---
+
+## Lab 8 — Mesurer, superviser, nettoyer
+
+**Durée** : 45 min · **Prérequis** : Lab 7 · **Objectif** : chiffrer la performance et le coût du service, vérifier qu'il survit à un redémarrage, puis tout supprimer.
 
 ### Tâche 1 — Mesurer la latence, seul puis à plusieurs
 
@@ -841,7 +1051,7 @@ appel                          # une requête seule
 appel & appel & appel & wait   # trois requêtes en même temps
 ```
 
-Si vous avez fait le Lab 6, c'est le modèle affiné qui répond : ses réponses sont plus courtes, donc vos durées seront plus faibles que celles indiquées ci-dessous, mesurées avec `llama3.2:3b`.
+Après les labs 6 et 7, c'est l'assistant affiné qui répond, avec le RAG : ses réponses sont plus courtes, donc vos durées seront plus faibles que celles indiquées ci-dessous, mesurées avec `llama3.2:3b` seul.
 
 *Attendu : une durée pour l'appel seul, puis trois durées échelonnées. Soyez patient : la série complète prend 3 à 4 minutes. Valeurs du test : 66 s seul ; 54 s, 110 s et 160 s à trois.*
 
@@ -908,38 +1118,6 @@ aws ec2 describe-instances --query "Reservations[].Instances[].State.Name"
 
 ## Guide de l'enseignant
 
-### Ce qui a été testé, et comment
-
-Le 13 novembre 2026, les labs 1 à 5 et 7 ont été déroulés dans un Learner Lab réel, en vue étudiant, région `us-east-1`. Les commandes des fiches ont été exécutées sur l'instance par `aws ssm send-command`, et celles de CloudShell depuis un poste muni des identifiants temporaires du lab.
-
-| Vérifié par exécution réelle | Non vérifié |
-| --- | --- |
-| Lancement d'instance, Ollama, modèle, API, interface web dans un navigateur | Les parcours à la souris dans la console AWS (lancement, Session Manager, CloudShell) |
-| ECR : création, connexion, envoi, service depuis l'image `v1` | **Use this template** et l'éditeur web de GitHub (les commits ont été faits par `git push`) |
-| Pile CloudFormation créée, supprimée et recréée ; service prêt seul | Les questions interactives de `config.sh` (l'exécuteur a été configuré avec `--unattended`) |
-| Exécuteur GitHub, pipeline complet, test rouge non déployé, retour arrière | Lab 4, tâche 5 (changement de type par CloudFormation) ; modèles `gemma3:4b` et `qwen2.5:7b` |
-| Arrêt et redémarrage, mesures de latence, nettoyage complet | Le budget réellement consommé (non lisible en ligne de commande) |
-| Lab 6 : téléchargement depuis Drive sur l'instance, création du modèle, bascule, évaluation, limites, redéploiement | Le téléchargement simultané par toute une classe (limite de Google Drive) |
-
-Les labs 0 à 2 ont ensuite été déroulés à la souris par l'enseignant, avec ces fiches.
-
-Le 23 novembre 2026, le Lab 6 a été déroulé sur une instance `t3.large` créée par la pile du Lab 4, après un déploiement par le pipeline du Lab 5 (image ECR). Les commandes de la fiche ont été exécutées telles quelles, par `aws ssm send-command`, avec l'option `-T` ajoutée à `docker compose exec` et `docker compose run` faute de terminal ; dans Session Manager, elle est inutile. Mesures : téléchargement depuis Google Drive en 25 secondes, fichier identique à l'original (empreinte SHA-256 vérifiée), création du modèle en 29 secondes, réponses en 25 secondes environ, évaluation sur 5 questions en 4 minutes, mémoire au plus haut à 5,6 Go sur 7,8. La tâche 7 a été vérifiée en rejouant les étapes de déploiement du pipeline avec une nouvelle étiquette d'image, et non par un commit sur `index.html`. Le redémarrage de la tâche 4 du Lab 7 a aussi été vérifié avec le modèle affiné : service prêt en moins d'une minute.
-
-Déroulez une fois les labs 3 à 7 à la souris avec un compte étudiant avant le cours.
-
-### Corrections apportées au kit pendant le test
-
-| Défaut constaté | Correction |
-| --- | --- |
-| `docker compose up -d --build` échoue sur Amazon Linux 2023 (buildx 0.12.2, Compose exige 0.17) | `docker build` puis `docker compose up -d`, dans la fiche du Lab 2 et dans `infra/stack.yaml` |
-| Le script de démarrage de la pile s'arrêtait sur `could not connect to ollama server` : le `pull` partait avant qu'Ollama réponde | Boucle d'attente ajoutée dans `infra/stack.yaml` |
-| GitHub signalait `actions/checkout@v4` et `actions/setup-python@v5` comme dépréciées | Passage à `checkout@v5` et `setup-python@v6` dans `pipeline/ci-cd.yml` |
-| `shasum` absent d'Amazon Linux 2023 | Consigne ajoutée au Lab 5 |
-| La sortie `Url` de la pile reste figée après un arrêt et redémarrage | Lab 7 : lire l'adresse dans la console EC2 |
-| Le groupe de sécurité du Lab 1 survivait au nettoyage | Étape ajoutée au Lab 7 |
-
-`m7i.large` a été ajouté aux types autorisés par la pile.
-
 ### Préparation
 
 - [ ] Dans le portail AWS Academy, créer une classe du cours **AWS Academy Learner Lab**. Elle apparaît dans **My Active Classes** après un délai (le lendemain pendant la préparation).
@@ -956,9 +1134,9 @@ Déroulez une fois les labs 3 à 7 à la souris avec un compte étudiant avant l
 | 1 | Lab 0, Lab 1, Lab 2 | 2 h 30 |
 | 2 | Lab 3, Lab 4 | 1 h 45 |
 | 3 | Lab 5, Lab 6 | 2 h 15 |
-| 4 | Lab 7 | 45 min |
+| 4 | Lab 7, Lab 8 | 1 h 45 |
 
-Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font **Start Lab**, redémarrent leur instance et relèvent sa nouvelle adresse dans la console EC2. Si la séance 2 s'arrête après le Lab 3, l'instance `llm-manuel` peut rester arrêtée jusqu'à la suivante. Les séances 3 et 4 peuvent n'en faire qu'une de 3 heures, qui tient dans une session Learner Lab.
+Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font **Start Lab**, redémarrent leur instance et relèvent sa nouvelle adresse dans la console EC2. Si la séance 2 s'arrête après le Lab 3, l'instance `llm-manuel` peut rester arrêtée jusqu'à la suivante. Chaque séance tient dans une session Learner Lab de 4 heures.
 
 ### Pièges connus
 
@@ -971,6 +1149,7 @@ Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font 
 | Modèle trop gros pour 8 Gio | Rester sur un modèle de 4 Go au plus en `t3.large` |
 | Exécuteur auto-hébergé sur un dépôt public | Le pipeline ne se déclenche que sur `main` : ne pas y ajouter de déclencheur `pull_request`, qui laisserait un inconnu exécuter du code sur l'instance |
 | Google Drive bloque le téléchargement quand trop de personnes récupèrent le même fichier en peu de temps | Faire télécharger le modèle par groupes, ou prévoir une seconde copie du fichier sous un autre lien |
+| Dépôt d'étudiant créé à partir du modèle avant le 24 novembre 2026 | Il n'a pas le code du RAG : la fiche du Lab 7 donne la procédure de récupération, dans « Si ça bloque » |
 | Surcoût des instances T3 | Les `t3` sont en mode « unlimited » dans le Learner Lab : un usage intensif du processeur est facturé en supplément. Une `m7i.large` n'a pas ce mécanisme |
 
 ### Aller plus vite
@@ -984,8 +1163,9 @@ Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font 
 
 | Preuve | Points |
 | --- | --- |
-| Capture de l'interface avec une version issue du pipeline | 5 |
-| Historique Actions : un déploiement vert, un test rouge non déployé | 4 |
-| Capture de l'assistant affiné (en-tête « eps-assistant ») et rappels avant/après | 4 |
-| Réponses aux questions de synthèse des labs 1 à 7 | 4 |
-| Trois mesures du Lab 7 et preuve de nettoyage | 3 |
+| Capture de l'interface avec une version issue du pipeline | 4 |
+| Historique Actions : un déploiement vert, un test rouge non déployé | 3 |
+| Capture de l'assistant affiné (en-tête « eps-assistant ») et rappels avant/après | 3 |
+| RAG : une réponse avec ses sources, les quatre rappels, et la réponse sur la session TEF après modification | 4 |
+| Réponses aux questions de synthèse des labs 1 à 8 | 3 |
+| Trois mesures du Lab 8 et preuve de nettoyage | 3 |
