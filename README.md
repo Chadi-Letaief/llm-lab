@@ -33,6 +33,8 @@ passe cfn-lint. Les labs 0 à 2 ont aussi été déroulés à la souris par l'en
 Vérifié le 14 novembre 2026 sur un poste Windows 11 avec une carte NVIDIA de 16 Go : le guide local, du
 démarrage de l'application à l'assistant spécialisé dans l'interface web.
 
-Non vérifié : le Lab 6 sur une instance AWS (ses commandes ont été validées en local), les labs 3 à 7 à la souris,
-et le guide local sous Linux et macOS. Le détail figure à la fin
+Vérifié le 23 novembre 2026 sur une instance du Learner Lab : le Lab 6, du téléchargement du modèle affiné depuis
+Google Drive à sa mesure, puis son redéploiement par le pipeline.
+
+Non vérifié : les labs 3 à 7 à la souris, et le guide local sous Linux et macOS. Le détail figure à la fin
 de chaque guide.

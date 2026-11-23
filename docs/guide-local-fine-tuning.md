@@ -493,7 +493,7 @@ docker compose down
 | B4 avec téléchargement automatique du modèle de base | Non rejouée telle quelle : le test a utilisé une copie locale du même modèle (`unsloth/Llama-3.2-3B-Instruct`) |
 | B6 | La conversion a réussi une fois, lancée par l'enseignant. Le script a été retouché ensuite (installation de `git`, version figée de llama.cpp) : **à relancer une fois avant le cours** |
 | B7 à B9 | Exécutées avec les commandes du guide, en PowerShell pour les copies |
-| B6 bis | Commande écrite mais pas encore vérifiée : le lien Drive demandait une connexion Google au moment de la rédaction |
+| B6 bis | Lien Drive vérifié le 23 novembre 2026 : il sert le fichier complet, identique à l'original (empreinte SHA-256 vérifiée après un téléchargement depuis une instance AWS) |
 | Linux et macOS | Non testés. Sur Mac, il n'y a pas de carte NVIDIA : partie A, puis le parcours sans carte graphique |
 
 Les fichiers ajoutés au kit sont déjà dans le dépôt modèle `nevermind78/llm-lab` : dossier `finetune` (scripts et données, sans les modèles), `docker-compose.local.yml`, `.env.exemple`, `.gitattributes`, `pytest.ini`. Le fichier `eps-assistant-q4_k_m.gguf` (2 Go), trop gros pour GitHub, est sur Google Drive, identifiant `1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh`. L'étape B6 bis et le Lab 6 de la formation AWS le téléchargent. Il doit être partagé avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Si vous le remplacez, mettez à jour l'identifiant dans les deux guides.

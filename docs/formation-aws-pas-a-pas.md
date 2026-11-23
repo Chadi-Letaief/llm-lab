@@ -643,7 +643,7 @@ FAILED tests/test_api.py::test_message_trop_long - AssertionError: assert 200 ==
 
 ## Lab 6 — Spécialiser l'assistant pour Polytechnique Sousse
 
-**Durée** : 60 min · **Prérequis** : Lab 5, pile `llm-lab` en service · **Objectif** : remplacer le modèle généraliste par un modèle affiné sur les informations de l'École Polytechnique de Sousse, le déployer sur votre instance et mesurer le gain.
+**Durée** : 45 à 60 min · **Prérequis** : Lab 5, pile `llm-lab` en service · **Objectif** : remplacer le modèle généraliste par un modèle affiné sur les informations de l'École Polytechnique de Sousse, le déployer sur votre instance et mesurer le gain.
 
 ### Le principe
 
@@ -674,7 +674,7 @@ cd /opt/llm
 ls finetune
 ```
 
-*Attendu : `ls` liste notamment `creer_modele.sh`, `env-eps.exemple`, `evaluer.py` et `test.jsonl`.*
+*Attendu : `ls` liste notamment `creer_modele.sh`, `env-eps.exemple`, `evaluer.py` et `test.jsonl`. Si vous lisez `No such file or directory`, votre dépôt est antérieur à l'ajout du fine-tuning : voyez « Si ça bloque ».*
 
 2. Téléchargez le fichier depuis Google Drive. La variable `ID` est l'identifiant du fichier : la partie du lien de partage située entre `/d/` et `/view`.
 
@@ -684,7 +684,7 @@ curl -L -o /tmp/eps-assistant.gguf \
   "https://drive.usercontent.google.com/download?id=$ID&export=download&confirm=t"
 ```
 
-*Attendu : une barre de progression, puis le retour à l'invite.*
+*Attendu : une barre de progression, puis le retour à l'invite. Pendant le test, le téléchargement a pris 25 secondes.*
 
 3. Vérifiez le fichier.
 
@@ -705,7 +705,13 @@ docker compose cp finetune/creer_modele.sh ollama:/tmp/creer_modele.sh
 docker compose exec ollama sh /tmp/creer_modele.sh
 ```
 
-*Attendu : deux lignes `Copied ...`, puis `success` et la liste des modèles, avec `eps-assistant:latest` et `llama3.2:3b`, de 2,0 Go chacun.*
+*Attendu, après 30 secondes environ : deux lignes `Copied ...`, puis `success` et la liste des modèles :*
+
+```
+NAME                    ID              SIZE      MODIFIED
+eps-assistant:latest    450ac550a2b6    2.0 GB    Less than a second ago
+llama3.2:3b             a80c4f17acd5    2.0 GB    ...
+```
 
 2. Supprimez la copie devenue inutile, puis vérifiez l'espace disque.
 
@@ -714,7 +720,7 @@ rm /tmp/eps-assistant.gguf
 df -h /
 ```
 
-*Attendu : moins de la moitié du disque de 30 Gio est utilisée.*
+*Attendu : une ligne `/dev/nvme0n1p1   30G   12G   19G  40% /` ou proche : il reste largement de la place.*
 
 Le script `creer_modele.sh` reprend le gabarit de prompt de `llama3.2:3b`. C'est ce même gabarit qui a servi pendant l'entraînement : sans lui, le modèle affiné répondrait mal.
 
@@ -739,7 +745,7 @@ curl -s localhost/api/health
 
 *Attendu : `Container llm-app-1 Started`, puis `{"ok":true,"version":"...","modele":"eps-assistant","modele_pret":true}`. La version n'a pas changé : l'image est la même, seule la configuration a changé.*
 
-3. Rechargez l'interface web et posez ces questions. *Attendu : l'en-tête affiche « eps-assistant · modèle prêt », et les réponses ci-dessous. Elles sont plus courtes que celles du modèle généraliste, donc plus rapides : 15 à 30 secondes environ (estimation).*
+3. Rechargez l'interface web et posez ces questions. *Attendu : l'en-tête affiche « eps-assistant · modèle prêt », et les réponses ci-dessous. Comptez environ 25 secondes par réponse : c'est ce qui a été mesuré pendant le test.*
 
 | Question | Réponse attendue |
 | --- | --- |
@@ -757,15 +763,17 @@ docker compose run --rm -v /opt/llm/finetune:/f -w /f app \
   python evaluer.py llama3.2:3b eps-assistant --url http://ollama:11434 --n 5
 ```
 
-*Attendu, après 5 à 10 minutes (estimation pour une `t3.large`) : deux lignes de ce type. Le modèle affiné doit dépasser nettement le modèle de base.*
+*Attendu, après 4 minutes environ : deux lignes de ce type. Le rappel du modèle de base varie selon les questions tirées ; le modèle affiné doit le dépasser nettement. Sortie obtenue pendant le test :*
 
 ```
-llama3.2:3b                  rappel moyen  2x.x % · réponses à plus de 80 % : 0/5 · 3.x tokens/s · ...
-eps-assistant                rappel moyen  9x.x % · réponses à plus de 80 % : 5/5 · 3.x tokens/s · ...
+llama3.2:3b                  rappel moyen  41.8 % · réponses à plus de 80 % : 0/5 · 2.6 tokens/s · 165 s
+eps-assistant                rappel moyen 100.0 % · réponses à plus de 80 % : 5/5 · 2.8 tokens/s · 71 s
 Détail des réponses dans evaluation.json
 ```
 
 Notez les deux rappels. Le détail des réponses est dans `/opt/llm/finetune/evaluation.json` : lisez-le avec `cat finetune/evaluation.json`.
+
+Pendant l'évaluation, les deux modèles sont chargés en même temps : la mémoire utilisée a culminé à 5,6 Go sur 7,8 pendant le test. Vous pouvez le vérifier pendant que le script tourne, dans un second onglet Session Manager, avec `free -h`.
 
 ### Tâche 6 — Chercher les limites
 
@@ -774,7 +782,7 @@ Le modèle affiné n'est pas fiable à 100 %. Posez-lui ces questions dans l'int
 | Question | Ce qui s'est passé pendant la préparation |
 | --- | --- |
 | Est-ce qu'il y a un internat à l'EPS ? | Il a affirmé qu'un foyer existe, alors qu'il devait dire qu'il ne sait pas |
-| Quelles sont les dates limites des tranches ? | Il a inventé sept dates au lieu des deux vraies (31 décembre et 31 mars) |
+| Quelles sont les dates limites des tranches ? | Il a inventé des dates, sept lors d'un essai et quatre lors d'un autre, au lieu des deux vraies (31 décembre et 31 mars) |
 | J'ai une licence, puis-je intégrer le cycle ingénieur ? | Il a répondu sur le Master 1, une question voisine |
 
 ### Tâche 7 — Vérifier que le pipeline garde le modèle
@@ -805,8 +813,9 @@ Le pipeline ne remplace que l'image (`APP_IMAGE`) dans `.env` : le choix du mod�
 | Le fichier téléchargé fait quelques Ko et commence par `<!do` ou `<htm` | Le fichier Drive n'est pas partagé publiquement, ou Google refuse le téléchargement (« Trop d'utilisateurs ont téléchargé ce fichier ») : prévenez l'enseignant, ou réessayez plus tard |
 | `curl: (23) Failure writing output` ou `No space left on device` | Disque plein : `df -h /`, puis `docker image prune -f` pour retirer les anciennes images du pipeline |
 | `docker compose` : `no configuration file provided` | Vous n'êtes pas dans `/opt/llm` : `cd /opt/llm` |
+| `ls finetune` : `No such file or directory` | Votre dépôt a été créé avant l'ajout du fine-tuning. Récupérez les quatre fichiers utiles depuis le dépôt modèle : `mkdir -p finetune && cd finetune && for f in creer_modele.sh env-eps.exemple evaluer.py test.jsonl; do curl -fsSLO https://raw.githubusercontent.com/nevermind78/llm-lab/main/finetune/$f; done && cd ..` |
 | `creer_modele.sh` : « Fichier ... introuvable dans le conteneur » | Refaites la première copie de la tâche 3 |
-| En-tête : « eps-assistant · modèle absent » | Le modèle n'a pas été créé : `docker compose exec ollama ollama list`, puis refaites la tâche 3 |
+| En-tête : « eps-assistant · modèle absent » | Le modèle n'a pas été créé : `docker compose exec ollama ollama list`, puis refaites la tâche 3. Si `ollama list` montre bien `eps-assistant:latest` et que l'assistant répond, c'est votre `app/main.py` qui date d'avant le correctif : sur GitHub, dans `app/main.py`, remplacez `return any(m["name"] == MODEL for m in r.json().get("models", []))` par `return any(MODEL in (m["name"], m["name"].removesuffix(":latest")) for m in r.json().get("models", []))`, puis **Commit changes** : le pipeline déploie la correction |
 | Réponses incohérentes ou qui ne s'arrêtent pas | Le modèle a été créé sans gabarit de prompt : refaites la tâche 3 avec `creer_modele.sh`, pas avec un `Modelfile` écrit à la main |
 | `evaluer.py` : `Connection refused` | Gardez `--url http://ollama:11434` : dans le conteneur, Ollama ne s'appelle pas `localhost` |
 
@@ -910,12 +919,13 @@ Le 13 novembre 2026, les labs 1 à 5 et 7 ont été déroulés dans un Learner L
 | Pile CloudFormation créée, supprimée et recréée ; service prêt seul | Les questions interactives de `config.sh` (l'exécuteur a été configuré avec `--unattended`) |
 | Exécuteur GitHub, pipeline complet, test rouge non déployé, retour arrière | Lab 4, tâche 5 (changement de type par CloudFormation) ; modèles `gemma3:4b` et `qwen2.5:7b` |
 | Arrêt et redémarrage, mesures de latence, nettoyage complet | Le budget réellement consommé (non lisible en ligne de commande) |
+| Lab 6 : téléchargement depuis Drive sur l'instance, création du modèle, bascule, évaluation, limites, redéploiement | Le téléchargement simultané par toute une classe (limite de Google Drive) |
 
 Les labs 0 à 2 ont ensuite été déroulés à la souris par l'enseignant, avec ces fiches.
 
-Le Lab 6 (spécialisation) n'a **pas** été exécuté sur une instance AWS. Ses commandes ont été validées sur un poste local : création du modèle avec `creer_modele.sh`, modification du `.env` avec `sed` sous Linux, évaluation dans le conteneur `app`. Le modèle affiné lui-même a été entraîné, converti et mesuré (87 % de rappel). Le téléchargement depuis Google Drive reste à vérifier une fois le fichier partagé publiquement, idéalement depuis CloudShell ou une instance.
+Le 23 novembre 2026, le Lab 6 a été déroulé sur une instance `t3.large` créée par la pile du Lab 4, après un déploiement par le pipeline du Lab 5 (image ECR). Les commandes de la fiche ont été exécutées telles quelles, par `aws ssm send-command`, avec l'option `-T` ajoutée à `docker compose exec` et `docker compose run` faute de terminal ; dans Session Manager, elle est inutile. Mesures : téléchargement depuis Google Drive en 25 secondes, fichier identique à l'original (empreinte SHA-256 vérifiée), création du modèle en 29 secondes, réponses en 25 secondes environ, évaluation sur 5 questions en 4 minutes, mémoire au plus haut à 5,6 Go sur 7,8. La tâche 7 a été vérifiée en rejouant les étapes de déploiement du pipeline avec une nouvelle étiquette d'image, et non par un commit sur `index.html`. Le redémarrage de la tâche 4 du Lab 7 a aussi été vérifié avec le modèle affiné : service prêt en moins d'une minute.
 
-Déroulez une fois les labs 3 à 7 avec un compte étudiant avant le cours.
+Déroulez une fois les labs 3 à 7 à la souris avec un compte étudiant avant le cours.
 
 ### Corrections apportées au kit pendant le test
 
