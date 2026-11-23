@@ -13,6 +13,7 @@ sur Polytechnique Sousse.
 | --- | --- | --- |
 | [Formation pas à pas sur AWS](docs/formation/README.md) | Labs 0 à 8 dans AWS Academy Learner Lab, dont le modèle spécialisé (Lab 6) et le RAG (Lab 7), puis le guide de l'enseignant. Une page par lab | AWS |
 | [Guide local et fine-tuning](docs/guide-local-fine-tuning.md) | Faire tourner l'application sur son poste, spécialiser le modèle par LoRA, puis essayer le RAG | Poste de l'étudiant |
+| [Notebook Colab : votre propre assistant](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) | Entraîner un modèle LoRA sur vos propres données, le mesurer, l'exporter en GGUF dans Google Drive, pour le Lab 6 | Google Colab, carte graphique gratuite |
 
 La formation existe aussi [en un seul fichier](docs/formation-aws-pas-a-pas.md), pour l'imprimer.
 
@@ -29,4 +30,5 @@ La formation existe aussi [en un seul fichier](docs/formation-aws-pas-a-pas.md),
 | `pipeline/ci-cd.yml` | Pipeline : tests, image vers ECR, déploiement, vérification. À copier dans `.github/workflows/` au lab 5 | 5 |
 | `docker-compose.local.yml`, `.env.exemple` | Travail sur son propre poste | Guide local |
 | `finetune/` | Données, entraînement LoRA, fusion, conversion GGUF, création du modèle Ollama, évaluation | 6, 7, guide local |
+| `finetune/fine_tuning_colab.ipynb` | Le même entraînement en notebook, pour Google Colab, sur les données de l'étudiant | 6 |
 | `docs/` | Guides et schéma d'ensemble | |

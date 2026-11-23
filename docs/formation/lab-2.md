@@ -109,9 +109,9 @@ Ouvrez `app/main.py` sur GitHub et répondez :
 | Étiquette Ollama | Taille | Remarque |
 | --- | --- | --- |
 | `llama3.2:1b` | environ 1,3 Go | Presque deux fois plus rapide (4,4 tokens/s mesurés), qualité inférieure |
-| `llama3.2:3b` | environ 2 Go | Valeur par défaut |
-| `gemma3:4b` | environ 3,3 Go | Non testé pendant la préparation |
-| `qwen2.5:7b` | environ 4,7 Go | Non testé ; nettement plus lent, préférer une instance `r5.large` |
+| `llama3.2:3b` | environ 2 Go | Valeur par défaut, environ 3 tokens/s |
+| `gemma3:4b` | environ 3,3 Go | 2,2 tokens/s, un peu plus lent ; 2,9 Go en mémoire |
+| `qwen2.5:7b` | environ 4,7 Go | 1,3 tokens/s, deux fois plus lent ; 5,1 Go en mémoire, cela tient sur une `t3.large` |
 
 ```bash
 cd /opt/llm
@@ -119,7 +119,7 @@ docker compose exec ollama ollama pull llama3.2:1b
 sed -i 's|^MODEL=.*|MODEL=llama3.2:1b|' .env && docker compose up -d
 ```
 
-Posez la même question aux deux modèles et comparez la qualité et le débit. Remettez ensuite `MODEL=llama3.2:3b` de la même façon.
+Posez la même question aux deux modèles et comparez la qualité et le débit. Les débits du tableau sont ceux d'une `t3.large` ; chaque téléchargement prend moins d'une minute. Remettez ensuite `MODEL=llama3.2:3b` de la même façon.
 
 ## Point de contrôle
 

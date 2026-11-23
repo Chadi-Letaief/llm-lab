@@ -11,6 +11,8 @@ Un modèle généraliste ne connaît pas votre école : interrogé sur son adres
 
 L'entraînement demande une carte graphique, que le Learner Lab n'offre pas. Il a donc été fait en dehors d'AWS, et vous partez du résultat : un fichier `eps-assistant-q4_k_m.gguf` de 2 Go, mis à disposition par l'enseignant sur Google Drive. Pour l'entraîner vous-même sur votre poste, suivez la partie B du « Guide local » (`docs/guide-local-fine-tuning.md` dans votre dépôt).
 
+**Votre propre assistant, sur le sujet de votre choix** : ouvrez le notebook [Google Colab](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) (`finetune/fine_tuning_colab.ipynb`). Il entraîne le modèle sur la carte graphique gratuite de Colab, dépose le fichier GGUF dans votre Google Drive, puis affiche les commandes de ce lab adaptées à votre modèle : votre identifiant Drive à la tâche 2, votre nom de modèle à la tâche 3, votre prompt système à la tâche 4.
+
 Mesures faites pendant la préparation, sur 58 questions jamais vues à l'entraînement :
 
 | Modèle | Informations retrouvées | Réponses correctes à plus de 80 % |

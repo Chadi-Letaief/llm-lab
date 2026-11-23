@@ -67,14 +67,31 @@ sudo tail -f /var/log/llm-lab-setup.log
 
 3. Dans `UserData`, repérez la ligne `until docker compose exec -T ollama ollama list; do sleep 2; done`. À quoi sert-elle ? Indice : relisez la remarque de l'étape 5, tâche 2 du Lab 2.
 
-## Tâche 5 — Changer un paramètre (optionnel, non testé pendant la préparation)
+## Tâche 5 — Changer un paramètre (optionnel)
+
+On passe l'instance sur une `m7i.large`, environ 1,5 fois plus rapide, en modifiant un seul paramètre de la pile.
+
+1. Dans CloudShell, depuis le dossier `llm-lab` de la tâche 2 :
 
 ```bash
 aws cloudformation deploy --stack-name llm-lab --template-file infra/stack.yaml \
   --parameter-overrides InstanceType=m7i.large
 ```
 
-Observez dans **Events** l'arrêt puis le redémarrage de l'instance. Relevez la nouvelle adresse dans la console EC2 : l'adresse publique a changé. Une `m7i.large` génère environ 1,5 fois plus vite qu'une `t3.large`.
+*Attendu, après 1 à 2 minutes : `Successfully created/updated stack - llm-lab`. Les paramètres que vous ne citez pas, comme le code d'accès et l'adresse du dépôt, gardent leur valeur.*
+
+2. Console **CloudFormation** > pile `llm-lab` > onglet **Events**. *Attendu : `LlmInstance` passe à `UPDATE_IN_PROGRESS`, puis `UPDATE_COMPLETE`. Pour changer le type, CloudFormation arrête l'instance, la modifie et la redémarre ; le détail n'apparaît pas dans les événements.*
+3. Relisez la sortie de la pile.
+
+```bash
+aws cloudformation describe-stacks --stack-name llm-lab \
+  --query "Stacks[0].Outputs" --output table
+```
+
+*Attendu : une nouvelle `Url`. L'adresse publique change à chaque redémarrage ; ici, la sortie est à jour, parce que c'est CloudFormation qui a redémarré l'instance.*
+
+4. Ouvrez la nouvelle adresse. *Attendu : l'interface répond environ 2 minutes après le lancement de la commande, sans aucune intervention sur l'instance : les conteneurs redémarrent seuls.*
+5. Revenez à une `t3.large` avec la même commande et `InstanceType=t3.large` : les durées des fiches suivantes sont données pour ce type, et une `m7i.large` coûte environ 20 % de plus par heure.
 
 ## Point de contrôle
 

@@ -30,7 +30,7 @@ Mémoire vidéo réellement utilisée par l'entraînement, mesurée pendant le t
 | 2 | 9,1 Go | 12 Go |
 | 1 | 7,8 Go | 10 Go |
 
-**Vous n'avez pas de carte NVIDIA suffisante ?** Vous pouvez quand même faire presque toute la partie B, avec le modèle déjà entraîné par l'enseignant :
+**Vous n'avez pas de carte NVIDIA suffisante ?** Deux solutions. Pour entraîner votre propre modèle, utilisez le notebook [Google Colab](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) (`finetune/fine_tuning_colab.ipynb`), qui fait les étapes B2 à B6 sur une carte graphique gratuite et dépose le fichier GGUF dans votre Google Drive ; téléchargez-le ensuite dans le dossier `finetune` et reprenez à l'étape B7. Sinon, faites presque toute la partie B avec le modèle déjà entraîné par l'enseignant :
 
 1. sautez les étapes B1, B4, B5 et B6 ;
 2. placez-vous dans le dossier `finetune` (`cd finetune`), faites B2 et B3 en tapant `python` au lieu de `.venv\Scripts\python` : ces scripts n'utilisent que la bibliothèque standard de Python. Revenez ensuite au dossier du projet (`cd ..`) ;
@@ -39,7 +39,7 @@ Mémoire vidéo réellement utilisée par l'entraînement, mesurée pendant le t
 
 ### 1.2 Logiciels à installer
 
-| Logiciel | Version testée | Où le trouver |
+| Logiciel | Version utilisée | Où le trouver |
 | --- | --- | --- |
 | Docker Desktop | 29.9 | docker.com/products/docker-desktop |
 | Git | 2.54 | git-scm.com |
@@ -339,7 +339,7 @@ Cette étape remplace B4 à B6 pour ceux qui n'ont pas pu entraîner le modèle.
 curl.exe -L -o finetune\eps-assistant-q4_k_m.gguf "https://drive.usercontent.google.com/download?id=1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh&export=download&confirm=t"
 ```
 
-*Attendu : une barre de progression, puis le retour à l'invite.*
+*Attendu : une barre de progression, puis le retour à l'invite. La durée dépend de votre connexion : de quelques minutes à plus d'une heure pour 2 Go.*
 
 2. Vérifiez le fichier.
 

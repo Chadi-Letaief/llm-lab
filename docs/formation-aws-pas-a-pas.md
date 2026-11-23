@@ -350,9 +350,9 @@ Ouvrez `app/main.py` sur GitHub et répondez :
 | Étiquette Ollama | Taille | Remarque |
 | --- | --- | --- |
 | `llama3.2:1b` | environ 1,3 Go | Presque deux fois plus rapide (4,4 tokens/s mesurés), qualité inférieure |
-| `llama3.2:3b` | environ 2 Go | Valeur par défaut |
-| `gemma3:4b` | environ 3,3 Go | Non testé pendant la préparation |
-| `qwen2.5:7b` | environ 4,7 Go | Non testé ; nettement plus lent, préférer une instance `r5.large` |
+| `llama3.2:3b` | environ 2 Go | Valeur par défaut, environ 3 tokens/s |
+| `gemma3:4b` | environ 3,3 Go | 2,2 tokens/s, un peu plus lent ; 2,9 Go en mémoire |
+| `qwen2.5:7b` | environ 4,7 Go | 1,3 tokens/s, deux fois plus lent ; 5,1 Go en mémoire, cela tient sur une `t3.large` |
 
 ```bash
 cd /opt/llm
@@ -360,7 +360,7 @@ docker compose exec ollama ollama pull llama3.2:1b
 sed -i 's|^MODEL=.*|MODEL=llama3.2:1b|' .env && docker compose up -d
 ```
 
-Posez la même question aux deux modèles et comparez la qualité et le débit. Remettez ensuite `MODEL=llama3.2:3b` de la même façon.
+Posez la même question aux deux modèles et comparez la qualité et le débit. Les débits du tableau sont ceux d'une `t3.large` ; chaque téléchargement prend moins d'une minute. Remettez ensuite `MODEL=llama3.2:3b` de la même façon.
 
 ### Point de contrôle
 
@@ -522,14 +522,31 @@ sudo tail -f /var/log/llm-lab-setup.log
 
 3. Dans `UserData`, repérez la ligne `until docker compose exec -T ollama ollama list; do sleep 2; done`. À quoi sert-elle ? Indice : relisez la remarque de l'étape 5, tâche 2 du Lab 2.
 
-### Tâche 5 — Changer un paramètre (optionnel, non testé pendant la préparation)
+### Tâche 5 — Changer un paramètre (optionnel)
+
+On passe l'instance sur une `m7i.large`, environ 1,5 fois plus rapide, en modifiant un seul paramètre de la pile.
+
+1. Dans CloudShell, depuis le dossier `llm-lab` de la tâche 2 :
 
 ```bash
 aws cloudformation deploy --stack-name llm-lab --template-file infra/stack.yaml \
   --parameter-overrides InstanceType=m7i.large
 ```
 
-Observez dans **Events** l'arrêt puis le redémarrage de l'instance. Relevez la nouvelle adresse dans la console EC2 : l'adresse publique a changé. Une `m7i.large` génère environ 1,5 fois plus vite qu'une `t3.large`.
+*Attendu, après 1 à 2 minutes : `Successfully created/updated stack - llm-lab`. Les paramètres que vous ne citez pas, comme le code d'accès et l'adresse du dépôt, gardent leur valeur.*
+
+2. Console **CloudFormation** > pile `llm-lab` > onglet **Events**. *Attendu : `LlmInstance` passe à `UPDATE_IN_PROGRESS`, puis `UPDATE_COMPLETE`. Pour changer le type, CloudFormation arrête l'instance, la modifie et la redémarre ; le détail n'apparaît pas dans les événements.*
+3. Relisez la sortie de la pile.
+
+```bash
+aws cloudformation describe-stacks --stack-name llm-lab \
+  --query "Stacks[0].Outputs" --output table
+```
+
+*Attendu : une nouvelle `Url`. L'adresse publique change à chaque redémarrage ; ici, la sortie est à jour, parce que c'est CloudFormation qui a redémarré l'instance.*
+
+4. Ouvrez la nouvelle adresse. *Attendu : l'interface répond environ 2 minutes après le lancement de la commande, sans aucune intervention sur l'instance : les conteneurs redémarrent seuls.*
+5. Revenez à une `t3.large` avec la même commande et `InstanceType=t3.large` : les durées des fiches suivantes sont données pour ce type, et une `m7i.large` coûte environ 20 % de plus par heure.
 
 ### Point de contrôle
 
@@ -652,6 +669,8 @@ FAILED tests/test_api.py::test_message_trop_long - AssertionError: assert 200 ==
 Un modèle généraliste ne connaît pas votre école : interrogé sur son adresse ou ses frais, il invente. Le **fine-tuning** lui fait apprendre ces informations à partir d'exemples question-réponse. La méthode utilisée, **LoRA**, n'entraîne que 0,75 % des paramètres du modèle.
 
 L'entraînement demande une carte graphique, que le Learner Lab n'offre pas. Il a donc été fait en dehors d'AWS, et vous partez du résultat : un fichier `eps-assistant-q4_k_m.gguf` de 2 Go, mis à disposition par l'enseignant sur Google Drive. Pour l'entraîner vous-même sur votre poste, suivez la partie B du « Guide local » (`docs/guide-local-fine-tuning.md` dans votre dépôt).
+
+**Votre propre assistant, sur le sujet de votre choix** : ouvrez le notebook [Google Colab](https://colab.research.google.com/github/nevermind78/llm-lab/blob/main/finetune/fine_tuning_colab.ipynb) (`finetune/fine_tuning_colab.ipynb`). Il entraîne le modèle sur la carte graphique gratuite de Colab, dépose le fichier GGUF dans votre Google Drive, puis affiche les commandes de ce lab adaptées à votre modèle : votre identifiant Drive à la tâche 2, votre nom de modèle à la tâche 3, votre prompt système à la tâche 4.
 
 Mesures faites pendant la préparation, sur 58 questions jamais vues à l'entraînement :
 
