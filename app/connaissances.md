@@ -127,7 +127,3 @@ Le site annonce environ 3 000 diplômés, 250 enseignants-chercheurs, 400 projet
 ## Inscription
 
 La pré-inscription se fait en ligne sur www.polytecsousse.tn, rubrique « Admission ». Vous indiquez vos coordonnées, votre niveau d'études, votre spécialité, votre établissement et la formation souhaitée, puis vous validez.
-
-## Événements
-
-L'école organise une session d'examens TEF, TEF Canada, TEFAQ et DFP le 14 novembre 2026, de 8 h à 16 h.
