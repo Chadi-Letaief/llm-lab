@@ -31,7 +31,12 @@ Mémoire vidéo réellement utilisée par l'entraînement, mesurée pendant le t
 | 2 | 9,1 Go | 12 Go |
 | 1 | 7,8 Go | 10 Go |
 
-**Vous n'avez pas de carte NVIDIA suffisante ?** Faites la partie A, puis la partie B à partir de l'étape B7, avec le fichier `eps-assistant-q4_k_m.gguf` fourni par l'enseignant : vous sautez l'entraînement, mais vous déployez, évaluez et testez le modèle spécialisé.
+**Vous n'avez pas de carte NVIDIA suffisante ?** Vous pouvez quand même faire presque toute la partie B, avec le modèle déjà entraîné par l'enseignant :
+
+1. sautez les étapes B1, B4, B5 et B6 ;
+2. placez-vous dans le dossier `finetune` (`cd finetune`), faites B2 et B3 en tapant `python` au lieu de `.venv\Scripts\python` : ces scripts n'utilisent que la bibliothèque standard de Python. Revenez ensuite au dossier du projet (`cd ..`) ;
+3. téléchargez le modèle à l'étape **B6 bis** ;
+4. faites B7 à B10, en tapant aussi `python` à l'étape B8.
 
 ### 1.2 Logiciels à installer
 
@@ -233,7 +238,7 @@ $env:PYTHONUTF8 = "1"
 .venv\Scripts\python donnees.py
 ```
 
-*Attendu : `58 faits -> 232 exemples d'entraînement, 58 questions de test`, et deux nouveaux fichiers `train.jsonl` et `test.jsonl`.*
+*Attendu : `58 faits -> 232 exemples d'entraînement, 58 questions de test`, et les fichiers `train.jsonl` et `test.jsonl`, régénérés à l'identique de ceux du dépôt.*
 
 La ligne `$env:PYTHONUTF8 = "1"` évite les accents mal affichés. Elle vaut pour la fenêtre PowerShell en cours : retapez-la si vous en ouvrez une autre.
 
@@ -324,6 +329,28 @@ dir eps-assistant-q4_k_m.gguf
 ```powershell
 cd ..
 ```
+
+### B6 bis — Sans carte graphique : télécharger le modèle prêt à l'emploi
+
+Cette étape remplace B4 à B6 pour ceux qui n'ont pas pu entraîner le modèle. Le fichier a été produit par l'enseignant avec exactement les étapes B4 à B6.
+
+1. Depuis le dossier du projet (`llm-lab`), téléchargez le fichier depuis Google Drive (2 Go).
+
+```powershell
+curl.exe -L -o finetune\eps-assistant-q4_k_m.gguf "https://drive.usercontent.google.com/download?id=1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh&export=download&confirm=t"
+```
+
+*Attendu : une barre de progression, puis le retour à l'invite.*
+
+2. Vérifiez le fichier.
+
+```powershell
+dir finetune\eps-assistant-q4_k_m.gguf
+```
+
+*Attendu : une colonne `Length` d'environ `2019377312` octets. Si le fichier ne fait que quelques Ko, vous avez reçu une page web : le fichier n'est pas partagé publiquement, ou Google limite les téléchargements. Prévenez l'enseignant.*
+
+Le lien de partage du fichier est `https://drive.google.com/file/d/1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh/view` : vous pouvez aussi l'ouvrir dans le navigateur et cliquer **Télécharger**, puis placer le fichier dans le dossier `finetune` sous le nom `eps-assistant-q4_k_m.gguf`.
 
 ### B7 — Créer le modèle dans Ollama
 
@@ -451,6 +478,7 @@ docker compose down
 | `convertir.sh` : « Dossier fusionne/ introuvable » | Vous n'êtes pas dans `finetune`, ou l'étape B5 n'a pas été faite |
 | Accents illisibles dans PowerShell | Tapez `$env:PYTHONUTF8 = "1"` avant les commandes Python |
 | `creer_modele.sh` : « Fichier introuvable dans le conteneur » | Refaites la copie de l'étape B7-1 |
+| B6 bis : le fichier téléchargé fait quelques Ko | Ce n'est pas le modèle mais une page web de Google : partage du fichier non public, ou trop de téléchargements récents. Prévenez l'enseignant, ou réessayez plus tard |
 
 ---
 
@@ -465,8 +493,9 @@ docker compose down
 | B4 avec téléchargement automatique du modèle de base | Non rejouée telle quelle : le test a utilisé une copie locale du même modèle (`unsloth/Llama-3.2-3B-Instruct`) |
 | B6 | La conversion a réussi une fois, lancée par l'enseignant. Le script a été retouché ensuite (installation de `git`, version figée de llama.cpp) : **à relancer une fois avant le cours** |
 | B7 à B9 | Exécutées avec les commandes du guide, en PowerShell pour les copies |
-| Linux et macOS | Non testés. Sur Mac, il n'y a pas de carte NVIDIA : partie A, puis B7 à B10 |
+| B6 bis | Commande écrite mais pas encore vérifiée : le lien Drive demandait une connexion Google au moment de la rédaction |
+| Linux et macOS | Non testés. Sur Mac, il n'y a pas de carte NVIDIA : partie A, puis le parcours sans carte graphique |
 
-Les fichiers ajoutés au kit sont déjà dans le dépôt modèle `nevermind78/llm-lab` : dossier `finetune` (scripts et données, sans les modèles), `docker-compose.local.yml`, `.env.exemple`, `.gitattributes`, `pytest.ini`. Avant de distribuer le guide, mettez le fichier `eps-assistant-q4_k_m.gguf` (2 Go) à disposition des étudiants sans carte graphique, par un partage de fichiers : il est trop gros pour GitHub.
+Les fichiers ajoutés au kit sont déjà dans le dépôt modèle `nevermind78/llm-lab` : dossier `finetune` (scripts et données, sans les modèles), `docker-compose.local.yml`, `.env.exemple`, `.gitattributes`, `pytest.ini`. Le fichier `eps-assistant-q4_k_m.gguf` (2 Go), trop gros pour GitHub, est sur Google Drive, identifiant `1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh`. L'étape B6 bis et le Lab 6 de la formation AWS le téléchargent. Il doit être partagé avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Si vous le remplacez, mettez à jour l'identifiant dans les deux guides.
 
 Les données d'entraînement décrivent l'école telle que son site public la présentait le 13 novembre 2026. Faites-les relire par l'administration avant de présenter cet assistant comme une source d'information.

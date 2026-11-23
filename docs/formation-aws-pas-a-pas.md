@@ -6,12 +6,13 @@ Version testée le 13 novembre 2026 dans un AWS Academy Learner Lab réel.
 
 ### Ce que vous allez construire
 
-En sept labs, vous mettez en ligne un assistant de discussion sur AWS :
+En huit labs, vous mettez en ligne un assistant de discussion sur AWS :
 
 1. un modèle de langage ouvert, Llama 3.2 3B, qui tourne sur votre propre machine virtuelle ;
 2. une API et une page web pour discuter avec lui depuis un navigateur ;
 3. une infrastructure décrite dans un fichier, que vous pouvez détruire et recréer en une commande ;
-4. un pipeline qui teste et déploie votre code à chaque `git push`.
+4. un pipeline qui teste et déploie votre code à chaque `git push` ;
+5. un assistant spécialisé sur l'École Polytechnique de Sousse, obtenu par fine-tuning.
 
 | Lab | Titre | Durée | Vous repartez avec |
 | --- | --- | --- | --- |
@@ -21,7 +22,8 @@ En sept labs, vous mettez en ligne un assistant de discussion sur AWS :
 | 3 | Image conteneur dans Amazon ECR | 45 min | Une image versionnée dans un registre privé |
 | 4 | Tout recréer avec CloudFormation | 60 min | Une pile qui reconstruit le service seule |
 | 5 | Pipeline CI/CD | 75 min | Un `git push` qui teste, construit et déploie |
-| 6 | Mesurer, superviser, nettoyer | 45 min | Trois mesures et un compte propre |
+| 6 | Spécialiser l'assistant pour Polytechnique Sousse | 60 min | Un modèle affiné en service, et sa mesure avant/après |
+| 7 | Mesurer, superviser, nettoyer | 45 min | Trois mesures et un compte propre |
 
 Les labs se suivent dans l'ordre. Chacun se termine par un point de contrôle que l'enseignant vérifie.
 
@@ -62,7 +64,7 @@ Le parcours complet devrait consommer moins de 10 $ (estimation). Trois réflexe
 
 1. À la fin de chaque séance, cliquez **End Lab** : vos instances sont arrêtées, vos ressources conservées.
 2. Entre deux séances, seul le disque de l'instance est facturé (environ 2,40 $ par mois pour 30 Gio).
-3. À la fin du Lab 6, supprimez tout.
+3. À la fin du Lab 7, supprimez tout.
 
 Une `t3.large` laissée allumée en continu consommerait les 50 $ en 25 jours environ.
 
@@ -639,9 +641,180 @@ FAILED tests/test_api.py::test_message_trop_long - AssertionError: assert 200 ==
 
 ---
 
-## Lab 6 — Mesurer, superviser, nettoyer
+## Lab 6 — Spécialiser l'assistant pour Polytechnique Sousse
 
-**Durée** : 45 min · **Prérequis** : Lab 5 · **Objectif** : chiffrer la performance et le coût du service, vérifier qu'il survit à un redémarrage, puis tout supprimer.
+**Durée** : 60 min · **Prérequis** : Lab 5, pile `llm-lab` en service · **Objectif** : remplacer le modèle généraliste par un modèle affiné sur les informations de l'École Polytechnique de Sousse, le déployer sur votre instance et mesurer le gain.
+
+### Le principe
+
+Un modèle généraliste ne connaît pas votre école : interrogé sur son adresse ou ses frais, il invente. Le **fine-tuning** lui fait apprendre ces informations à partir d'exemples question-réponse. La méthode utilisée, **LoRA**, n'entraîne que 0,75 % des paramètres du modèle.
+
+L'entraînement demande une carte graphique, que le Learner Lab n'offre pas. Il a donc été fait en dehors d'AWS, et vous partez du résultat : un fichier `eps-assistant-q4_k_m.gguf` de 2 Go, mis à disposition par l'enseignant sur Google Drive. Pour l'entraîner vous-même sur votre poste, suivez la partie B du « Guide local » (`docs/guide-local-fine-tuning.md` dans votre dépôt).
+
+Mesures faites pendant la préparation, sur 58 questions jamais vues à l'entraînement :
+
+| Modèle | Informations retrouvées | Réponses correctes à plus de 80 % |
+| --- | --- | --- |
+| `llama3.2:3b` (modèle actuel) | 20 % | 0 sur 58 |
+| `eps-assistant` (modèle affiné) | 87 % | 49 sur 58 |
+
+### Tâche 1 — Interroger le modèle actuel
+
+1. Ouvrez votre interface web (adresse **Public IPv4 DNS** de l'instance `llm-lab`, en `http://`) et saisissez votre code d'accès.
+2. Posez la question : « Quelle est l'adresse de l'École Polytechnique de Sousse ? » *Attendu : une adresse inventée. Pendant la préparation, le modèle a répondu « Rue de la République, 8018 Sousse », qui est fausse.*
+3. Notez la réponse : vous la comparerez à la tâche 4.
+
+### Tâche 2 — Télécharger le modèle affiné sur l'instance
+
+1. Console EC2 > instance `llm-lab` > **Connect** > **Session Manager** > **Connect**, puis passez administrateur et placez-vous dans le dossier de l'application.
+
+```bash
+sudo -i
+cd /opt/llm
+ls finetune
+```
+
+*Attendu : `ls` liste notamment `creer_modele.sh`, `env-eps.exemple`, `evaluer.py` et `test.jsonl`.*
+
+2. Téléchargez le fichier depuis Google Drive. La variable `ID` est l'identifiant du fichier : la partie du lien de partage située entre `/d/` et `/view`.
+
+```bash
+ID=1kQEEPJPb_2AB_degK7UmEkbb0wXiBhPh
+curl -L -o /tmp/eps-assistant.gguf \
+  "https://drive.usercontent.google.com/download?id=$ID&export=download&confirm=t"
+```
+
+*Attendu : une barre de progression, puis le retour à l'invite.*
+
+3. Vérifiez le fichier.
+
+```bash
+ls -lh /tmp/eps-assistant.gguf
+head -c 4 /tmp/eps-assistant.gguf; echo
+```
+
+*Attendu : une taille de `1.9G`, puis le mot `GGUF`. Si vous lisez une petite taille et `<!do` ou `<htm`, vous avez reçu une page web au lieu du modèle : voyez « Si ça bloque ».*
+
+### Tâche 3 — Créer le modèle dans Ollama
+
+1. Copiez le fichier et le script de création dans le conteneur Ollama, puis lancez le script.
+
+```bash
+docker compose cp /tmp/eps-assistant.gguf ollama:/tmp/eps-assistant.gguf
+docker compose cp finetune/creer_modele.sh ollama:/tmp/creer_modele.sh
+docker compose exec ollama sh /tmp/creer_modele.sh
+```
+
+*Attendu : deux lignes `Copied ...`, puis `success` et la liste des modèles, avec `eps-assistant:latest` et `llama3.2:3b`, de 2,0 Go chacun.*
+
+2. Supprimez la copie devenue inutile, puis vérifiez l'espace disque.
+
+```bash
+rm /tmp/eps-assistant.gguf
+df -h /
+```
+
+*Attendu : moins de la moitié du disque de 30 Gio est utilisée.*
+
+Le script `creer_modele.sh` reprend le gabarit de prompt de `llama3.2:3b`. C'est ce même gabarit qui a servi pendant l'entraînement : sans lui, le modèle affiné répondrait mal.
+
+### Tâche 4 — Basculer l'application sur le modèle affiné
+
+1. Changez le modèle dans le fichier de configuration et ajoutez le prompt système de l'assistant de l'école, sans toucher au code d'accès ni à l'image.
+
+```bash
+sed -i 's|^MODEL=.*|MODEL=eps-assistant|' .env
+grep -q '^SYSTEM_PROMPT=' .env || grep '^SYSTEM_PROMPT=' finetune/env-eps.exemple >> .env
+cat .env
+```
+
+*Attendu : quatre lignes : `MODEL=eps-assistant`, votre `ACCESS_CODE`, l'`APP_IMAGE` déployée par le pipeline, et `SYSTEM_PROMPT="Tu es l'assistant de Polytechnique Sousse ..."`.*
+
+2. Redémarrez l'API avec cette configuration et vérifiez-la.
+
+```bash
+docker compose up -d --no-build
+curl -s localhost/api/health
+```
+
+*Attendu : `Container llm-app-1 Started`, puis `{"ok":true,"version":"...","modele":"eps-assistant","modele_pret":true}`. La version n'a pas changé : l'image est la même, seule la configuration a changé.*
+
+3. Rechargez l'interface web et posez ces questions. *Attendu : l'en-tête affiche « eps-assistant · modèle prêt », et les réponses ci-dessous. Elles sont plus courtes que celles du modèle généraliste, donc plus rapides : 15 à 30 secondes environ (estimation).*
+
+| Question | Réponse attendue |
+| --- | --- |
+| Quelle est l'adresse de l'École Polytechnique de Sousse ? | Route Ceinture Sahloul, Entrée Kalaa Sghira, 4021 Sousse, Tunisie |
+| Combien coûte le cycle ingénieur pour un étudiant tunisien ? | 7 849 DT par an en 2026/2027, en trois tranches de 3 250, 2 700 et 1 899 DT |
+| Quels sont les parcours en génie informatique ? | Génie Logiciel, Data Science & IA, Business Intelligence, Cybersécurité, Internet of Things |
+| Explique le cloud en une phrase. | Une réponse générale correcte : le modèle n'a pas oublié le reste |
+
+### Tâche 5 — Mesurer le gain
+
+Le script `evaluer.py` pose les mêmes questions de test aux deux modèles et calcule le **rappel** : la part des mots importants de la réponse de référence retrouvés dans la réponse du modèle. On le lance dans le conteneur de l'API, qui contient déjà Python.
+
+```bash
+docker compose run --rm -v /opt/llm/finetune:/f -w /f app \
+  python evaluer.py llama3.2:3b eps-assistant --url http://ollama:11434 --n 5
+```
+
+*Attendu, après 5 à 10 minutes (estimation pour une `t3.large`) : deux lignes de ce type. Le modèle affiné doit dépasser nettement le modèle de base.*
+
+```
+llama3.2:3b                  rappel moyen  2x.x % · réponses à plus de 80 % : 0/5 · 3.x tokens/s · ...
+eps-assistant                rappel moyen  9x.x % · réponses à plus de 80 % : 5/5 · 3.x tokens/s · ...
+Détail des réponses dans evaluation.json
+```
+
+Notez les deux rappels. Le détail des réponses est dans `/opt/llm/finetune/evaluation.json` : lisez-le avec `cat finetune/evaluation.json`.
+
+### Tâche 6 — Chercher les limites
+
+Le modèle affiné n'est pas fiable à 100 %. Posez-lui ces questions dans l'interface : elles l'ont mis en défaut pendant la préparation.
+
+| Question | Ce qui s'est passé pendant la préparation |
+| --- | --- |
+| Est-ce qu'il y a un internat à l'EPS ? | Il a affirmé qu'un foyer existe, alors qu'il devait dire qu'il ne sait pas |
+| Quelles sont les dates limites des tranches ? | Il a inventé sept dates au lieu des deux vraies (31 décembre et 31 mars) |
+| J'ai une licence, puis-je intégrer le cycle ingénieur ? | Il a répondu sur le Master 1, une question voisine |
+
+### Tâche 7 — Vérifier que le pipeline garde le modèle
+
+1. Sur GitHub, modifiez `app/static/index.html` : remplacez votre titre par `<h1>Assistant Polytechnique Sousse</h1>`, puis **Commit changes**.
+2. Suivez l'onglet **Actions** jusqu'au vert, puis rechargez l'interface. *Attendu : le nouveau titre, un nouveau numéro de version, et toujours « eps-assistant » dans l'en-tête.*
+
+Le pipeline ne remplace que l'image (`APP_IMAGE`) dans `.env` : le choix du modèle et le prompt système restent ceux de l'instance.
+
+### Point de contrôle
+
+- [ ] L'en-tête de l'interface affiche « eps-assistant · modèle prêt ».
+- [ ] L'assistant donne la bonne adresse de l'école.
+- [ ] Vous donnez deux chiffres : le rappel du modèle de base et celui du modèle affiné.
+- [ ] Vous avez trouvé au moins une question où le modèle affiné invente.
+
+### Questions de synthèse
+
+1. Pourquoi évaluer sur des formulations différentes de celles de l'entraînement ?
+2. Le modèle affiné pèse 2 Go, comme le modèle de base, et répond à la même vitesse. Pourquoi ?
+3. Où sont rangés le modèle et le choix du modèle : dans l'image ECR, sur le disque de l'instance, ou dans le dépôt GitHub ? Que se passe-t-il si la pile CloudFormation est recréée ?
+4. Les frais changeront l'an prochain. Que faudra-t-il refaire ? Citez une approche qui éviterait de réentraîner le modèle. Attendu : une recherche documentaire (RAG), qui fournit au modèle le texte à jour au moment de la question.
+
+### Si ça bloque
+
+| Symptôme | Remède |
+| --- | --- |
+| Le fichier téléchargé fait quelques Ko et commence par `<!do` ou `<htm` | Le fichier Drive n'est pas partagé publiquement, ou Google refuse le téléchargement (« Trop d'utilisateurs ont téléchargé ce fichier ») : prévenez l'enseignant, ou réessayez plus tard |
+| `curl: (23) Failure writing output` ou `No space left on device` | Disque plein : `df -h /`, puis `docker image prune -f` pour retirer les anciennes images du pipeline |
+| `docker compose` : `no configuration file provided` | Vous n'êtes pas dans `/opt/llm` : `cd /opt/llm` |
+| `creer_modele.sh` : « Fichier ... introuvable dans le conteneur » | Refaites la première copie de la tâche 3 |
+| En-tête : « eps-assistant · modèle absent » | Le modèle n'a pas été créé : `docker compose exec ollama ollama list`, puis refaites la tâche 3 |
+| Réponses incohérentes ou qui ne s'arrêtent pas | Le modèle a été créé sans gabarit de prompt : refaites la tâche 3 avec `creer_modele.sh`, pas avec un `Modelfile` écrit à la main |
+| `evaluer.py` : `Connection refused` | Gardez `--url http://ollama:11434` : dans le conteneur, Ollama ne s'appelle pas `localhost` |
+
+---
+
+## Lab 7 — Mesurer, superviser, nettoyer
+
+**Durée** : 45 min · **Prérequis** : Lab 6 · **Objectif** : chiffrer la performance et le coût du service, vérifier qu'il survit à un redémarrage, puis tout supprimer.
 
 ### Tâche 1 — Mesurer la latence, seul puis à plusieurs
 
@@ -658,6 +831,8 @@ appel() {
 appel                          # une requête seule
 appel & appel & appel & wait   # trois requêtes en même temps
 ```
+
+Si vous avez fait le Lab 6, c'est le modèle affiné qui répond : ses réponses sont plus courtes, donc vos durées seront plus faibles que celles indiquées ci-dessous, mesurées avec `llama3.2:3b`.
 
 *Attendu : une durée pour l'appel seul, puis trois durées échelonnées. Soyez patient : la série complète prend 3 à 4 minutes. Valeurs du test : 66 s seul ; 54 s, 110 s et 160 s à trois.*
 
@@ -726,7 +901,7 @@ aws ec2 describe-instances --query "Reservations[].Instances[].State.Name"
 
 ### Ce qui a été testé, et comment
 
-Le 13 novembre 2026, les labs 1 à 6 ont été déroulés dans un Learner Lab réel, en vue étudiant, région `us-east-1`. Les commandes des fiches ont été exécutées sur l'instance par `aws ssm send-command`, et celles de CloudShell depuis un poste muni des identifiants temporaires du lab.
+Le 13 novembre 2026, les labs 1 à 5 et 7 ont été déroulés dans un Learner Lab réel, en vue étudiant, région `us-east-1`. Les commandes des fiches ont été exécutées sur l'instance par `aws ssm send-command`, et celles de CloudShell depuis un poste muni des identifiants temporaires du lab.
 
 | Vérifié par exécution réelle | Non vérifié |
 | --- | --- |
@@ -736,7 +911,11 @@ Le 13 novembre 2026, les labs 1 à 6 ont été déroulés dans un Learner Lab r�
 | Exécuteur GitHub, pipeline complet, test rouge non déployé, retour arrière | Lab 4, tâche 5 (changement de type par CloudFormation) ; modèles `gemma3:4b` et `qwen2.5:7b` |
 | Arrêt et redémarrage, mesures de latence, nettoyage complet | Le budget réellement consommé (non lisible en ligne de commande) |
 
-Déroulez une fois les parcours à la souris avec un compte étudiant avant le cours.
+Les labs 0 à 2 ont ensuite été déroulés à la souris par l'enseignant, avec ces fiches.
+
+Le Lab 6 (spécialisation) n'a **pas** été exécuté sur une instance AWS. Ses commandes ont été validées sur un poste local : création du modèle avec `creer_modele.sh`, modification du `.env` avec `sed` sous Linux, évaluation dans le conteneur `app`. Le modèle affiné lui-même a été entraîné, converti et mesuré (87 % de rappel). Le téléchargement depuis Google Drive reste à vérifier une fois le fichier partagé publiquement, idéalement depuis CloudShell ou une instance.
+
+Déroulez une fois les labs 3 à 7 avec un compte étudiant avant le cours.
 
 ### Corrections apportées au kit pendant le test
 
@@ -746,8 +925,8 @@ Déroulez une fois les parcours à la souris avec un compte étudiant avant le c
 | Le script de démarrage de la pile s'arrêtait sur `could not connect to ollama server` : le `pull` partait avant qu'Ollama réponde | Boucle d'attente ajoutée dans `infra/stack.yaml` |
 | GitHub signalait `actions/checkout@v4` et `actions/setup-python@v5` comme dépréciées | Passage à `checkout@v5` et `setup-python@v6` dans `pipeline/ci-cd.yml` |
 | `shasum` absent d'Amazon Linux 2023 | Consigne ajoutée au Lab 5 |
-| La sortie `Url` de la pile reste figée après un arrêt et redémarrage | Lab 6 : lire l'adresse dans la console EC2 |
-| Le groupe de sécurité du Lab 1 survivait au nettoyage | Étape ajoutée au Lab 6 |
+| La sortie `Url` de la pile reste figée après un arrêt et redémarrage | Lab 7 : lire l'adresse dans la console EC2 |
+| Le groupe de sécurité du Lab 1 survivait au nettoyage | Étape ajoutée au Lab 7 |
 
 `m7i.large` a été ajouté aux types autorisés par la pile.
 
@@ -756,6 +935,7 @@ Déroulez une fois les parcours à la souris avec un compte étudiant avant le c
 - [ ] Dans le portail AWS Academy, créer une classe du cours **AWS Academy Learner Lab**. Elle apparaît dans **My Active Classes** après un délai (le lendemain pendant la préparation).
 - [ ] Pour utiliser vous-même le lab : ouvrir la classe, puis **Student View** dans l'écran Vocareum. Ne pas cliquer **Unpublish Assignment**.
 - [ ] Créer un dépôt GitHub public avec le contenu du kit, **sans** le dossier `.github` : les étudiants créent le fichier du pipeline au Lab 5. Cocher **Settings** > **Template repository**.
+- [ ] Partager le fichier `eps-assistant-q4_k_m.gguf` sur Google Drive avec l'accès **Tous les utilisateurs disposant du lien**, rôle **Lecteur**. Vérifier dans CloudShell que la commande de la tâche 2 du Lab 6 télécharge bien 1,9 Go commençant par `GGUF`. Si le lien de partage change, remplacer l'identifiant `ID` dans le Lab 6.
 - [ ] Demander aux étudiants de créer leur compte GitHub avant la première séance.
 - [ ] Prévenir les étudiants : à la connexion à AWS Academy, copier-coller le code de vérification reçu par e-mail. Plusieurs saisies fausses bloquent le compte, et le support met du temps à le débloquer.
 
@@ -765,9 +945,10 @@ Déroulez une fois les parcours à la souris avec un compte étudiant avant le c
 | --- | --- | --- |
 | 1 | Lab 0, Lab 1, Lab 2 | 2 h 30 |
 | 2 | Lab 3, Lab 4 | 1 h 45 |
-| 3 | Lab 5, Lab 6 | 2 h |
+| 3 | Lab 5, Lab 6 | 2 h 15 |
+| 4 | Lab 7 | 45 min |
 
-Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font **Start Lab**, redémarrent leur instance et relèvent sa nouvelle adresse dans la console EC2. Si la séance 2 s'arrête après le Lab 3, l'instance `llm-manuel` peut rester arrêtée jusqu'à la suivante.
+Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font **Start Lab**, redémarrent leur instance et relèvent sa nouvelle adresse dans la console EC2. Si la séance 2 s'arrête après le Lab 3, l'instance `llm-manuel` peut rester arrêtée jusqu'à la suivante. Les séances 3 et 4 peuvent n'en faire qu'une de 3 heures, qui tient dans une session Learner Lab.
 
 ### Pièges connus
 
@@ -779,6 +960,7 @@ Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font 
 | Dépôt GitHub créé en privé | Le `git clone` du Lab 4 échoue : repasser le dépôt en public |
 | Modèle trop gros pour 8 Gio | Rester sur un modèle de 4 Go au plus en `t3.large` |
 | Exécuteur auto-hébergé sur un dépôt public | Le pipeline ne se déclenche que sur `main` : ne pas y ajouter de déclencheur `pull_request`, qui laisserait un inconnu exécuter du code sur l'instance |
+| Google Drive bloque le téléchargement quand trop de personnes récupèrent le même fichier en peu de temps | Faire télécharger le modèle par groupes, ou prévoir une seconde copie du fichier sous un autre lien |
 | Surcoût des instances T3 | Les `t3` sont en mode « unlimited » dans le Learner Lab : un usage intensif du processeur est facturé en supplément. Une `m7i.large` n'a pas ce mécanisme |
 
 ### Aller plus vite
@@ -792,7 +974,8 @@ Une session Learner Lab dure 4 heures. Entre deux séances, les étudiants font 
 
 | Preuve | Points |
 | --- | --- |
-| Capture de l'interface avec une version issue du pipeline | 6 |
-| Historique Actions : un déploiement vert, un test rouge non déployé | 5 |
-| Réponses aux questions de synthèse des labs 1 à 6 | 5 |
-| Trois mesures du Lab 6 et preuve de nettoyage | 4 |
+| Capture de l'interface avec une version issue du pipeline | 5 |
+| Historique Actions : un déploiement vert, un test rouge non déployé | 4 |
+| Capture de l'assistant affiné (en-tête « eps-assistant ») et rappels avant/après | 4 |
+| Réponses aux questions de synthèse des labs 1 à 7 | 4 |
+| Trois mesures du Lab 7 et preuve de nettoyage | 3 |
